@@ -136,7 +136,7 @@ def search_documents(query: str, limit: int = 5) -> ToolResult:
 
 
 def query_knowledge_graph(question: str) -> ToolResult:
-    """Search model-extracted relationships backed by current quotations and AGE edges."""
+    """Search extracted relationships backed by current quotations and AGE edges."""
     if not question.strip() or len(question) > 4000:
         return ToolResult(status="error", data=[], citations=[], error="Provide a question of 1–4000 characters.")
     try:
@@ -146,6 +146,6 @@ def query_knowledge_graph(question: str) -> ToolResult:
         return ToolResult(status="ok" if rows else "empty", data=rows,
                           citations=[{**_citation(row, "triple"), "chunk_id": row["chunk_id"],
                                       "evidence": row["evidence"]} for row in rows],
-                          error="Relationships are model-extracted; verify their quoted source and conditions." if rows else None)
+                          error="Verify extracted relationships against their quoted source and conditions." if rows else None)
     except Exception:
         return _unavailable()

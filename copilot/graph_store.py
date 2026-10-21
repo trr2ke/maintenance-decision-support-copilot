@@ -55,7 +55,7 @@ def store_extractions(conn, batches, *, graph_name="maintenance_kb"):
                     (id, subject, predicate, object, source, chunk_id, evidence, content_hash, model)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (triple_id, triple["subject"], predicate, triple["object"], batch["source"],
-                     batch["chunk_id"], triple["evidence"], batch["content_hash"], batch["model"]))
+                     batch["chunk_id"], triple["evidence"], batch["content_hash"], triple.get("model", batch["model"])))
                 _cypher(conn, graph_name,
                         "MERGE (s:Entity {name: $subject}) MERGE (o:Entity {name: $object}) "
                         f"CREATE (s)-[r:{predicate} {{triple_id: $id, source: $source, "
@@ -72,7 +72,8 @@ def store_extractions(conn, batches, *, graph_name="maintenance_kb"):
 def query_graph(conn, question, *, graph_name="maintenance_kb"):
     """Return current, safe document evidence whose corresponding AGE edges exist."""
     rows = conn.execute("""SELECT t.id, t.subject, t.predicate, t.object, t.source,
-        t.chunk_id, t.evidence, t.content_hash, t.model, 'local_model' AS extraction_method
+        t.chunk_id, t.evidence, t.content_hash, t.model,
+        CASE WHEN t.model='source-table' THEN 'source_table' ELSE 'local_model' END AS extraction_method
         FROM knowledge_triples t JOIN document_chunks d ON d.id = t.chunk_id
         WHERE d.injection_risk_score = 0 AND d.source = t.source
         AND t.content_hash = encode(sha256(convert_to(d.content, 'UTF8')), 'hex')

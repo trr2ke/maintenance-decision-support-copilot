@@ -8,12 +8,12 @@ from copilot import extraction, graph_store
 from copilot.config import Settings
 
 
-def setup_workflow(monkeypatch, *, cached=None, current=None, chunk=None):
+def setup_workflow(monkeypatch, *, cached=None, current=None, chunk=None, stored=None):
     chunk = chunk or {"id": "synthetic-1", "source": "synthetic.txt",
                       "content": "A valve contains a seal.", "injection_risk_score": 0}
     initial = MagicMock()
     initial.__enter__.return_value = initial
-    initial.execute.return_value.fetchall.side_effect = [[chunk], cached or []]
+    initial.execute.return_value.fetchall.side_effect = [[chunk], cached or [], stored or []]
     publish = MagicMock()
     publish.__enter__.return_value = publish
     publish.execute.return_value.fetchone.return_value = current if current is not None else chunk
@@ -103,3 +103,17 @@ def test_successful_empty_extraction_is_published_for_caching(monkeypatch):
     assert value["chunk_id"] == chunk["id"]
     assert value["triples"] == []
     assert value["content_hash"] == extraction.content_hash(chunk["content"])
+
+
+def test_cached_model_output_is_completed_with_every_table_row_without_inference(monkeypatch):
+    text = "| Protrusion | Status |\n| --- | --- |\n| > 8 mm | Ready |\n| 3-8 mm | Inspect |\n| < 3 mm | Replace |"
+    chunk = {"id": "synthetic-1", "source": "synthetic.txt", "content": text, "injection_risk_score": 0}
+    cached = {**checkpoint(), "content_hash": extraction.content_hash(text)}
+    _, extractor, store, _ = setup_workflow(monkeypatch, cached=[cached], chunk=chunk)
+    result = extraction.extract_graph()
+    extractor.extract.assert_not_called()
+    triples = store.call_args.args[1][0]["triples"]
+    assert result["chunks_processed"] == 1
+    assert len(triples) == 6
+    assert sum(t["predicate"] == "INDICATES" for t in triples) == 3
+    assert all(t["model"] == "source-table" for t in triples)
