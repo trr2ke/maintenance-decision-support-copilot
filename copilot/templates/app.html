@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Maintenance Copilot · Workspace</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Maintenance Copilot home"><span class="brand-mark" aria-hidden="true">M<span>·</span></span><span>Maintenance<br><strong>Copilot</strong></span></a>
+    <div class="sidebar-label">WORKSPACE</div>
+    <nav aria-label="Main navigation">
+      <a class="nav-item active" href="/" aria-current="page"><span aria-hidden="true">↗</span> Assistant</a>
+      <a class="nav-item" href="/graph" target="_blank" rel="noopener"><span aria-hidden="true">◇</span> Knowledge graph <span class="external" aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a>
+    </nav>
+    <div class="sidebar-bottom"><span class="local-dot" aria-hidden="true"></span> Local workspace<p>Maintenance records, manuals<br>and parts in one place.</p></div>
+  </aside>
+
+  <main>
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> Assistant</div><span class="workspace-tag">DECISION SUPPORT</span></header>
+    <div class="workspace">
+      <section class="page-heading"><div><div class="eyebrow">FROM SIGNAL TO NEXT STEP</div><h1>Maintenance workspace<span>.</span></h1><p>Investigate fleet signals with evidence you can inspect.</p></div><div class="heading-symbol" aria-hidden="true">↗</div></section>
+
+      <section class="service-strip" aria-label="Local service status">
+        <span class="strip-label">CONNECTIONS</span>
+        <div id="service-status" class="service-status"><span class="service checking">Checking local services…</span></div>
+        <button id="refresh-health" class="refresh-button" type="button" aria-label="Refresh service status" title="Refresh service status">↻</button>
+      </section>
+      <p id="health-note" class="health-note" role="status"></p>
+
+      <section class="investigation" aria-labelledby="question-title">
+        <div class="section-heading"><h2 id="question-title">What are you investigating?</h2><span>ONE QUESTION. CONNECTED EVIDENCE.</span></div>
+        <form id="query-form">
+          <label for="question" class="sr-only">Maintenance question</label>
+          <textarea id="question" name="question" rows="3" maxlength="2000" required placeholder="Ask about a tail, a maintenance procedure, or parts availability…"></textarea>
+          <div class="composer-footer"><span>Each question starts a new investigation.</span><button id="submit-query" class="primary-button" type="submit">Investigate <span aria-hidden="true">↗</span></button></div>
+        </form>
+        <div class="suggestion-label">A PLACE TO START</div>
+        <div class="suggestions">
+          <button type="button" class="suggestion" data-prompt="Tail 412’s brake temperatures look high lately. What should we investigate? Include procedures and parts availability."><span class="suggestion-icon" aria-hidden="true">⌁</span><span><strong>Investigate a fleet signal</strong><small>Review Tail 412’s brake temperatures</small></span><span class="suggestion-arrow" aria-hidden="true">↗</span></button>
+          <button type="button" class="suggestion" data-prompt="Find the available brake inspection procedures and cite the relevant manual sections."><span class="suggestion-icon" aria-hidden="true">≡</span><span><strong>Find a procedure</strong><small>Inspect the supporting manual sections</small></span><span class="suggestion-arrow" aria-hidden="true">↗</span></button>
+          <button type="button" class="suggestion" data-prompt="Which brake parts installed on Tail 412 are available? Include stock locations, reserved stock, and lead times where available."><span class="suggestion-icon" aria-hidden="true">◇</span><span><strong>Check parts availability</strong><small>Connect inventory with next steps</small></span><span class="suggestion-arrow" aria-hidden="true">↗</span></button>
+        </div>
+      </section>
+
+      <div id="progress" class="progress" role="status" hidden><span class="spinner" aria-hidden="true"></span><div><strong>Gathering local evidence…</strong><span>Reviewing available records, procedures, and parts.</span></div><span id="elapsed">0s</span></div>
+      <div id="query-error" class="error-message" role="alert" hidden></div>
+
+      <section id="result" class="result" aria-labelledby="result-title" hidden>
+        <div class="section-heading"><h2 id="result-title" tabindex="-1">Investigation</h2><div class="result-meta"><span id="result-status" class="status-badge"></span><span id="result-time"></span></div></div>
+        <p id="result-question" class="result-question"></p>
+        <div class="result-grid"><article class="answer-card"><div class="card-label">ASSESSMENT</div><div id="answer" class="answer"></div></article><aside class="evidence-panel" aria-labelledby="evidence-title"><div class="evidence-heading"><h3 id="evidence-title">Sources &amp; evidence</h3><span id="source-count"></span></div><p class="evidence-intro">Open a source to inspect its supporting record.</p><div id="citations"></div><div id="evidence"></div></aside></div>
+      </section>
+
+      <section id="data-summary" class="data-summary" aria-label="Available local data" hidden></section>
+      <footer class="workspace-footer"><span>Built on your local evidence.</span><span>Verify cited procedures before acting.</span></footer>
+    </div>
+  </main>
+</body>
+</html>

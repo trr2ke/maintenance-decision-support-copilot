@@ -13,6 +13,8 @@ def main(argv=None):
     extraction.add_argument("--force", action="store_true", help="Re-extract unchanged document chunks")
     visualization = commands.add_parser("visualize", help="Export an offline interactive PyVis graph")
     visualization.add_argument("--output", default="artifacts/maintenance-graph.html")
+    server = commands.add_parser("serve", help="Open the local maintenance web workspace")
+    server.add_argument("--port", type=int, default=5050)
     ask = commands.add_parser("ask", help="Ask a question using local evidence")
     ask.add_argument("question")
     commands.add_parser("mcp", help="Serve shared tools over MCP stdio")
@@ -33,6 +35,11 @@ def main(argv=None):
         elif args.command == "visualize":
             from copilot.visualization import visualize
             print(json.dumps(visualize(args.output)))
+        elif args.command == "serve":
+            if not 1 <= args.port <= 65535:
+                raise ValueError("Invalid port")
+            from copilot.web import create_app
+            create_app().run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False, threaded=True)
         elif args.command == "mcp":
             from copilot.mcp_server import main as serve
             serve()
