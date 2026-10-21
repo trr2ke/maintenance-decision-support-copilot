@@ -44,8 +44,10 @@ def query_fleet_data(question: str, tail_number: str | None = None) -> ToolResul
     except ValueError as exc:
         return ToolResult(status="error", data=[], citations=[], error=str(exc))
     if tail_number is None:
-        match = re.search(r"\btail(?:\s+number)?\s+([A-Z0-9][A-Z0-9-]*\d[A-Z0-9-]*)\b", question, re.I)
+        match = re.search(r"\btail(?:\s+number)?\s+['\"]?([A-Z0-9][A-Z0-9-]*)\b", question, re.I)
         tail_number = match.group(1) if match else None
+        if tail_number is None and re.search(r"\btail(?:\s+number)?\b", question, re.I):
+            return ToolResult(status="error", data=[], citations=[], error="Specify the requested tail number.")
     tail = tail_number.strip().upper() if tail_number else None
     try:
         with read_connection() as conn:

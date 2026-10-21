@@ -86,3 +86,32 @@ def test_relative_time_windows(question, days):
 def test_unsupported_relative_time_is_not_silently_all_time():
     result = retrieval.query_fleet_data("last 12 hours")
     assert result.status == "error"
+
+
+@pytest.mark.parametrize("question,expected", [
+    ("tail UNKNOWN lately", "UNKNOWN"),
+    ("tail DEMO-1's recent temperatures", "DEMO-1"),
+    ('tail number "DEMO-2" lately', "DEMO-2"),
+])
+def test_implicit_tail_never_broadens_to_entire_fleet(monkeypatch, question, expected):
+    bound_tails = []
+    class Connection:
+        def execute(self, sql, params=None):
+            if params:
+                bound_tails.append(params[0])
+            return self
+        def fetchone(self):
+            return {"anchor": None}
+        def fetchall(self):
+            return []
+    @contextmanager
+    def connection():
+        yield Connection()
+    monkeypatch.setattr(retrieval, "read_connection", connection)
+    result = retrieval.query_fleet_data(question)
+    assert result.status == "empty"
+    assert bound_tails[:3] == [expected] * 3
+
+
+def test_incomplete_tail_request_is_rejected():
+    assert retrieval.query_fleet_data("recent readings for tail").status == "error"
