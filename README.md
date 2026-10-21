@@ -1,68 +1,45 @@
 # Maintenance Decision-Support Copilot
 
-This repository contains independently authored readiness tooling and an execution
-plan. Application development starts only when its execution phase is authorized.
+Local readiness setup; application development is on hold. See
+[EXECUTION_PLAN.md](EXECUTION_PLAN.md) for the build and PR sequence.
+Keep the supplied kit in ignored `rtx-ai-session-kit/`, or set `KIT_DIR` in `.env`.
+Kit contents, credentials and derived data must stay out of Git and hosted CI.
 
-The supplied session kit is a local prerequisite, not a repository artifact. Place
-it in `rtx-ai-session-kit/` or configure `KIT_DIR` in an ignored local `.env` file.
-Never publish the kit, its contents, or derived data in commits, PRs or CI output.
-Use newly authored fixtures for hosted CI and local checks for supplied material.
+## Run on this workstation
 
-See [EXECUTION_PLAN.md](EXECUTION_PLAN.md) for prerequisites, task ownership,
-acceptance criteria and the branch/PR workflow.
+```powershell
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/startup.ps1
+```
 
-## Local setup
+This starts the services and runs the full preflight, including the supplied
+smoke test. Use `-NoStart` for running services or `-SkipModels` for a partial
+check. Full smoke output stays in `.local/kit-smoke-output.txt`.
 
-Use Python 3.12 and Docker with Linux containers. The current workstation uses
-`rtx-ai-session-kit/.venv/Scripts/python.exe`. On a fresh workstation, create a
-root `.venv` and install the independently maintained dependency list:
+## Fresh setup
+
+Requires Python 3.12, Docker Linux containers and Ollama. Create `.env` from
+`.env.example` only if it does not exist, then configure local paths/endpoints.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-test.txt
-Copy-Item .env.example .env
-```
-
-Do not overwrite an existing `.env`. Keep configured endpoints local. Follow
-[model readiness](docs/model-readiness.md) to pull source models and create the
-verified aliases. Download the embedding model once before offline use:
-
-```powershell
+ollama pull gemma4:12b
+ollama create maintenance-gemma4:12b -f scripts/models/gemma4.Modelfile
+ollama pull llama3.2:3b
+ollama create maintenance-llama32:3b -f scripts/models/llama32.Modelfile
 .\.venv\Scripts\python.exe -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')"
 ```
 
-For the already prepared workstation, start/check services and run the complete
-preflight, including the supplied smoke test:
+Startup selects the root `.venv`, then the default kit's `.venv`; pass
+`-PythonExe` to use another interpreter. `.env` selects the kit location, not
+that interpreter. Dependency pins cover direct packages, not a transitive lock.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\startup.ps1
-```
+Both model aliases use a 4K context and 60-second request timeout. Use Gemma at
+temperature 0.1 with `reasoning_effort="none"`; use Llama at temperature 0 with
+no reasoning parameter. For structured final results, remove bound tools and
+use JSON response mode. These checks establish tool compatibility, not answer quality.
 
-Startup chooses a root `.venv`, then the local kit's `.venv`. To reuse an
-environment elsewhere, pass `-PythonExe 'C:\path\to\python.exe'`. `KIT_DIR` in
-`.env` selects data and the Compose mount, not the interpreter. Git Bash/Linux
-users can set `PYTHON_EXE` and run `bash scripts/startup.sh`.
-The command above permits local scripts for that PowerShell process only; it
-does not change the machine's execution policy.
-
-`-NoStart` checks services already running; `-SkipModels` is an explicitly partial
-check and does not run the supplied model smoke test. Failures return nonzero.
-Full smoke output stays in ignored `.local/kit-smoke-output.txt`; share it with
-session organizers yourself through the agreed channel. Re-run before the
-session; a successful setup check does not certify application behavior.
-
-## Validation and collaboration
-
-```powershell
-.\rtx-ai-session-kit\.venv\Scripts\python.exe -m pytest -q
-```
-
-The hosted CI suite uses only new synthetic fixtures. Local preflight checks
-source integrity, extensions and actual graph/vector queries, service endpoints,
-persisted synthetic traces, offline embeddings and both model tool round trips.
-Model tests use per-request deadlines; a two-call round trip may consume twice
-that limit. There is no application implementation or application test suite yet.
-
-See [infrastructure](infra/README.md) for pinned services and persistence checks,
-[shared contracts](docs/contracts.md) for planned interfaces, and
-[AGENTS.md](AGENTS.md) for worktree ownership and commit/PR rules.
+Run tests with the selected interpreter: `python -m pytest -q`. Hosted CI uses
+only independent fixtures. Services bind to localhost; database volumes persist
+across container recreation. To stop them without removing data:
+`docker compose stop`.
