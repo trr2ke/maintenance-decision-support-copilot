@@ -28,6 +28,15 @@ def timestamp(value: str) -> datetime:
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
 
 
+def text_identifier(value: object) -> str:
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError("Identifier must be text or an integer")
+    value = str(value).strip()
+    if not value or re.fullmatch(r"[+-]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?", value):
+        raise ValueError("Identifier cannot be blank or decimal")
+    return value
+
+
 def chunks(text: str, size: int = 1200, overlap: int = 200):
     if not 0 <= overlap < size:
         raise ValueError("Invalid chunk overlap")
@@ -49,8 +58,9 @@ def sensor_rows(path: Path, source: str):
             for key in numeric:
                 if row.get(key) and not math.isfinite(float(row[key])):
                     raise ValueError("Nonfinite sensor measurement")
-            key = stable_id(source, *(row[k] for k in ("flight_id", "tail_number", "wheel_pos", "landing_utc")))
-            yield key, row["tail_number"], timestamp(row["landing_utc"]), row
+            identifiers = [text_identifier(row[k]) for k in ("flight_id", "tail_number", "wheel_pos")]
+            key = stable_id(source, *identifiers, row["landing_utc"])
+            yield key, identifiers[1], timestamp(row["landing_utc"]), row
 
 
 def maintenance_rows(path: Path, source: str):
@@ -59,9 +69,10 @@ def maintenance_rows(path: Path, source: str):
             if not line.strip():
                 continue
             row = json.loads(line)
-            if not all(isinstance(row.get(k), str) and row[k] for k in ("log_id", "tail_number", "date")):
+            if not isinstance(row.get("date"), str) or not row["date"]:
                 raise ValueError("Maintenance identifier or timestamp invalid")
-            yield stable_id(source, row["log_id"]), row["tail_number"], timestamp(row["date"]), row
+            key, tail = text_identifier(row.get("log_id")), text_identifier(row.get("tail_number"))
+            yield stable_id(source, key), tail, timestamp(row["date"]), row
 
 
 def sqlite_records(path: Path):
