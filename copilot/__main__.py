@@ -9,6 +9,8 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("migrate", help="Create the application tables")
     commands.add_parser("ingest", help="Load the configured local kit idempotently")
+    extraction = commands.add_parser("extract", help="Extract cited relationships with local models into Apache AGE")
+    extraction.add_argument("--force", action="store_true", help="Re-extract unchanged document chunks")
     ask = commands.add_parser("ask", help="Ask a question using local evidence")
     ask.add_argument("question")
     commands.add_parser("mcp", help="Serve shared tools over MCP stdio")
@@ -21,6 +23,11 @@ def main(argv=None):
         elif args.command == "ingest":
             from copilot.ingestion import ingest
             print(json.dumps(ingest(), default=str))
+        elif args.command == "extract":
+            from copilot.extraction import extract_graph
+            result = extract_graph(force=args.force)
+            print(json.dumps(result))
+            return 0 if result["status"] == "ok" else 1
         elif args.command == "mcp":
             from copilot.mcp_server import main as serve
             serve()

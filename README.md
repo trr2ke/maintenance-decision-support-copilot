@@ -12,6 +12,7 @@ With the configured Python environment, run:
 ```powershell
 python -m copilot migrate
 python -m copilot ingest
+python -m copilot extract
 python -m copilot ask "Summarize recent brake temperatures and relevant procedures for tail 412."
 python -m copilot mcp
 ```
@@ -19,8 +20,10 @@ python -m copilot mcp
 Use `KIT_DIR` in `.env` when running from a separate worktree. Ingestion is
 transactional and repeatable. Answers include local evidence and citations;
 missing evidence or failed services remain explicitly unknown. Phoenix receives
-operation status traces without prompts or source text. Graph extraction and a
-web UI are deferred; graph lookup returns only explicitly stored triples.
+operation status traces without prompts or source text. `extract` uses the local
+models to populate Apache AGE with quoted, source-linked relationships. Unchanged
+chunks are cached; `extract --force` refreshes them. Model-extracted relations
+require verification against their quotations. The web UI remains deferred.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/startup.ps1
