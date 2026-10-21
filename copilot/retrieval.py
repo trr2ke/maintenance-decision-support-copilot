@@ -16,14 +16,36 @@ def _citation(row, kind):
     return {"source": row["source"], "record_id": row.get("id", row.get("record_key")), "kind": kind}
 
 
+def _time_window(question):
+    text = question.lower()
+    match = re.search(r"(?:last|past)\s+(\d{1,4}|one|two|three|seven|thirty|a)?\s*(days?|weeks?|months?)\b", text)
+    if match:
+        number = match.group(1) or "1"
+        words = {"a": 1, "one": 1, "two": 2, "three": 3, "seven": 7, "thirty": 30}
+        number = int(number) if number.isdigit() else words[number]
+        return number * (7 if match.group(2).startswith("week") else 30 if match.group(2).startswith("month") else 1)
+    if "yesterday" in text or "today" in text:
+        return 1
+    if re.search(r"\b(recent|recently|lately)\b", text):
+        return 7
+    if re.search(r"\b(last|past)\b.{0,30}\b(hours?|days?|weeks?|months?|years?)\b", text):
+        raise ValueError("Specify the time window as last N days, weeks or months.")
+    return None
+
+
 def query_fleet_data(question: str, tail_number: str | None = None) -> ToolResult:
     """Return fleet summaries and recent evidence, anchored to the latest dataset timestamp."""
     if not question.strip() or len(question) > 4000:
         return ToolResult(status="error", data=[], citations=[], error="Provide a question of 1–4000 characters.")
     if tail_number is not None and (not tail_number.strip() or len(tail_number) > 64):
         return ToolResult(status="error", data=[], citations=[], error="Invalid tail number.")
-    days_match = re.search(r"(?:last|past)\s+(\d{1,4})\s+days?", question, re.I)
-    days = int(days_match.group(1)) if days_match else (7 if re.search(r"(?:last|past) week", question, re.I) else None)
+    try:
+        days = _time_window(question)
+    except ValueError as exc:
+        return ToolResult(status="error", data=[], citations=[], error=str(exc))
+    if tail_number is None:
+        match = re.search(r"\btail(?:\s+number)?\s+([A-Z0-9][A-Z0-9-]*\d[A-Z0-9-]*)\b", question, re.I)
+        tail_number = match.group(1) if match else None
     tail = tail_number.strip().upper() if tail_number else None
     try:
         with read_connection() as conn:
@@ -42,13 +64,17 @@ def query_fleet_data(question: str, tail_number: str | None = None) -> ToolResul
                     max(CASE WHEN payload->>'peak_brake_temp_c' ~ '^-?[0-9]+(\\.[0-9]+)?$'
                         THEN (payload->>'peak_brake_temp_c')::double precision END) AS max_peak_brake_temp_c
                 FROM sensor_readings WHERE """ + filters + " GROUP BY tail_number, payload->>'wheel_pos' ORDER BY tail_number, wheel_position LIMIT 100", params).fetchall()
-            sensors = conn.execute("SELECT id, tail_number, observed_at, payload, source FROM sensor_readings WHERE " + filters + " ORDER BY observed_at DESC NULLS LAST, id LIMIT 50", params).fetchall()
-            logs = conn.execute("SELECT id, tail_number, occurred_at, payload, source FROM maintenance_logs WHERE " + filters.replace("observed_at", "occurred_at") + " AND injection_risk_score = 0 ORDER BY occurred_at DESC NULLS LAST, id LIMIT 30", params).fetchall()
+            sensors = conn.execute("""SELECT id, tail_number, observed_at, payload, source FROM (
+                SELECT *, row_number() OVER (ORDER BY observed_at DESC NULLS LAST, id) AS recent_rank,
+                    row_number() OVER (ORDER BY CASE WHEN payload->>'peak_brake_temp_c' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                        THEN (payload->>'peak_brake_temp_c')::double precision END DESC NULLS LAST, id) AS hot_rank
+                FROM sensor_readings WHERE """ + filters + ") ranked WHERE recent_rank <= 6 OR hot_rank <= 6 ORDER BY hot_rank, recent_rank LIMIT 12", params).fetchall()
+            logs = conn.execute("SELECT id, tail_number, occurred_at, payload, source FROM maintenance_logs WHERE " + filters.replace("observed_at", "occurred_at") + " AND injection_risk_score = 0 ORDER BY occurred_at DESC NULLS LAST, id LIMIT 8", params).fetchall()
             records = conn.execute("""
                 SELECT source, record_key, payload FROM source_records
                 WHERE to_tsvector('english', payload::text) @@ plainto_tsquery('english', %s)
                 OR (%s::text IS NOT NULL AND upper(payload->>'tail_number') = %s)
-                ORDER BY source, record_key LIMIT 30
+                ORDER BY source, record_key LIMIT 8
             """, (question, tail, tail)).fetchall()
         data = []
         if summary:
@@ -60,6 +86,12 @@ def query_fleet_data(question: str, tail_number: str | None = None) -> ToolResul
         data.extend({"kind": "source_record", **row} for row in records)
         citations = [_citation(row, kind) for kind, rows in
                      (("sensor_reading", sensors), ("maintenance_log", logs), ("source_record", records)) for row in rows]
+        if summary:
+            citations.append({"source": "sensor_readings", "kind": "aggregate",
+                              "tail_number": tail, "days": days,
+                              "anchor": anchor.isoformat() if anchor else None,
+                              "groups": [{"tail_number": group["tail_number"], "wheel_position": group["wheel_position"],
+                                          "record_count": group["reading_count"]} for group in summary]})
         return ToolResult(status="ok" if data else "empty", data=data, citations=citations,
                           source_time=anchor.isoformat() if anchor else None)
     except Exception:
