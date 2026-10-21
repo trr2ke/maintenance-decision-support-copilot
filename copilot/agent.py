@@ -1,5 +1,6 @@
 """A bounded evidence-gathering graph with a separate, tool-free final response."""
 import json
+import re
 from typing import TypedDict
 
 import httpx
@@ -58,8 +59,17 @@ def _invoke(messages, *, planning: bool):
 
 
 def _plan(state: State):
+    if _maintenance_question(state["question"]):
+        return {"calls": [
+            {"name": "query_fleet_data", "args": {"question": state["question"]}, "id": "fleet"},
+            {"name": "search_documents", "args": {"query": state["question"], "limit": 3}, "id": "documents"},
+        ]}
     response = _invoke([SystemMessage(content=SYSTEM), HumanMessage(content=state["question"])], planning=True)
     return {"calls": response.tool_calls[:2] if response else []}
+
+
+def _maintenance_question(question):
+    return bool(re.search(r"\b(brakes?|maintenance|temperatures?|temps?|sensors?|procedures?|fleet)\b", question, re.I))
 
 
 def _tools(state: State):
@@ -107,8 +117,9 @@ def _context(results):
             row.get("kind") == "source_record" and "installed_components" in str(row.get("source", "")),
             _temperature(row.get("payload", {}), "peak_brake_temp_c") if row.get("kind") == "sensor_reading" else float("-inf"),
         ), reverse=True)
-        # Summary scope remains first even when installed-part records rank highly.
-        rows.sort(key=lambda row: row.get("kind") != "sensor_summary")
+        # Reserve room for installed part identifiers before bulky observations.
+        rows.sort(key=lambda row: 0 if row.get("kind") == "source_record" and "installed_components" in str(row.get("source", ""))
+                  else 1 if row.get("kind") == "sensor_summary" else 2)
         for row in rows:
             kind = row.get("kind", row.get("resource", "record"))
             if kind not in kinds:
@@ -156,6 +167,20 @@ def _context(results):
 def _followup(state: State):
     if not state.get("results"):
         return {"calls": []}
+    if _maintenance_question(state["question"]):
+        calls = []
+        if re.search(r"\b(parts?|stock|inventory|replacement|replace|availability|available|supply)\b", state["question"], re.I):
+            seen = set()
+            for result in state["results"]:
+                for row in result["data"]:
+                    if "installed_components" not in str(row.get("source", "")):
+                        continue
+                    payload = row.get("payload", {})
+                    part_number = payload.get("part_number") if isinstance(payload, dict) else None
+                    if isinstance(part_number, str) and part_number.strip() and part_number not in seen:
+                        seen.add(part_number)
+                        calls.append({"name": "query_parts", "args": {"part_number": part_number}, "id": f"parts-{len(calls)}"})
+        return {"calls": calls[:MAX_TOOLS - len(state["results"])]}
     response = _invoke([
         SystemMessage(content=SYSTEM + "\nUse the first evidence to resolve any missing lookup, especially discovered part numbers. Do not repeat a completed lookup."),
         HumanMessage(content=json.dumps({"question": state["question"], "evidence": _context(state["results"])}, default=str)),
