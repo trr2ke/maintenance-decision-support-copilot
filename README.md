@@ -10,6 +10,16 @@ Kit contents, credentials and derived data must stay out of Git and hosted CI.
 With the configured Python environment, run:
 
 ```powershell
+python -m copilot serve
+```
+
+Open `http://127.0.0.1:5050` for the local workspace: ask a question, inspect
+its citations, or open the interactive graph. Each question is independent.
+The server binds only to loopback and runs one model request at a time.
+
+To prepare the data or use the command line:
+
+```powershell
 python -m copilot migrate
 python -m copilot ingest
 python -m copilot extract
@@ -24,7 +34,7 @@ missing evidence or failed services remain explicitly unknown. Phoenix receives
 operation status traces without prompts or source text. `extract` uses the local
 models to populate Apache AGE with quoted, source-linked relationships. Unchanged
 chunks are cached; `extract --force` refreshes them. Model-extracted relations
-require verification against their quotations. The web UI remains deferred.
+require verification against their quotations.
 `visualize` writes an interactive, offline graph to ignored
 `artifacts/maintenance-graph.html`; select a relationship to inspect its quotation.
 
