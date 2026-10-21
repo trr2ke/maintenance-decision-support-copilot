@@ -11,12 +11,12 @@ def install_transport(monkeypatch, handler):
 def test_inventory_keeps_reservations_and_lots(monkeypatch):
     def handler(request):
         if request.url.path.startswith("/inventory"):
-            return httpx.Response(200, json=[{"depot_id": "D1", "on_hand": 3, "reserved": 3, "lot": "L1"}, {"depot_id": "D2", "on_hand": 4}])
+            return httpx.Response(200, json=[{"depot_id": "D1", "qty_on_hand": 3, "qty_reserved": 3, "lot_number": "L1"}, {"depot_id": "D2", "qty_on_hand": 4}])
         return httpx.Response(200, json={"part_number": "P1"} if request.url.path.startswith("/parts") else [])
     install_transport(monkeypatch, handler)
     result = parts.query_parts("P1", "D1")
     assert result.status == "ok"
-    assert result.data[1]["records"] == [{"depot_id": "D1", "on_hand": 3, "reserved": 3, "lot": "L1"}]
+    assert result.data[1]["records"] == [{"depot_id": "D1", "qty_on_hand": 3, "qty_reserved": 3, "lot_number": "L1", "available_quantity": 0}]
     assert len(result.citations) == 3
 
 

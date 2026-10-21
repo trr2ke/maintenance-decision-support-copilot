@@ -111,7 +111,7 @@ def search_documents(query: str, limit: int = 5) -> ToolResult:
     if not query.strip() or len(query) > 4000 or not 1 <= limit <= 10:
         return ToolResult(status="error", data=[], citations=[], error="Query must be 1–4000 characters and limit 1–10.")
     try:
-        embedding = _embedding_model().encode(query, normalize_embeddings=True).tolist()
+        embedding = _embedding_model().encode(query, normalize_embeddings=True, show_progress_bar=False).tolist()
         vector = "[" + ",".join(str(float(value)) for value in embedding) + "]"
     except Exception:
         vector = None

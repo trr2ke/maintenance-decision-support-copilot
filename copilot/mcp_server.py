@@ -45,7 +45,7 @@ HANDLERS = {name: _traced(handler) for name, handler in {
     "query_knowledge_graph": query_knowledge_graph,
     "query_parts": query_parts,
 }.items()}
-mcp = FastMCP("maintenance-decision-support")
+mcp = FastMCP("maintenance-decision-support", log_level="WARNING")
 for handler in HANDLERS.values():
     mcp.tool()(handler)
 
