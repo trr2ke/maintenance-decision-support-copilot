@@ -104,3 +104,20 @@ def test_followup_sees_discovered_part_number(monkeypatch):
     result = agent._followup({"question": "Find replacement stock", "results": [{"tool": "query_fleet_data", "status": "ok",
         "data": [{"part_number": "FIXTURE-PN"}], "citations": []}]})
     assert result["calls"][0]["args"] == {"part_number": "FIXTURE-PN"}
+
+
+def test_context_prioritizes_hottest_groups_and_installed_parts():
+    rows = [{"kind": "sensor_summary", "scope": {"days": 7}, "groups": [
+        {"wheel_position": str(i), "max_peak_brake_temp_c": value}
+        for i, value in enumerate([None, 100, 200, 300, 900, 800])]}]
+    rows += [{"kind": "source_record", "source": "parts/depots", "record_key": "D1"},
+             {"kind": "source_record", "source": "parts/installed_components", "record_key": "I1", "payload": {"part_number": "P1"}},
+             {"kind": "sensor_reading", "id": "cool", "observed_at": "2026-01-03", "payload": {"peak_brake_temp_c": 50}},
+             {"kind": "sensor_reading", "id": "hot", "observed_at": "2026-01-01", "payload": {"peak_brake_temp_c": 900}}]
+    result = agent._context([{"tool": "query_fleet_data", "status": "ok", "data": rows, "citations": []}])[0]
+    summary = result["data"][0]
+    assert [group["max_peak_brake_temp_c"] for group in summary["groups"]] == [900, 800]
+    assert summary["groups_truncated"]
+    assert next(row for row in result["data"] if row.get("kind") == "source_record")["record_key"] == "I1"
+    assert next(row for row in result["data"] if row.get("kind") == "sensor_reading")["id"] == "hot"
+    assert any(row.get("id") == "cool" for row in result["data"])
