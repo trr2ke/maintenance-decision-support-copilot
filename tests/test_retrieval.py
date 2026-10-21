@@ -72,3 +72,17 @@ def test_lexical_fallback_is_disclosed_and_cited(monkeypatch):
     assert result.status == "ok"
     assert "lexical" in result.error
     assert result.citations[0]["source"] == "fixture.md"
+
+
+@pytest.mark.parametrize("question,days", [
+    ("recent brake temperatures", 7), ("tail DEMO-1 lately", 7),
+    ("past month", 30), ("last two weeks", 14), ("yesterday", 1),
+    ("last 3 days", 3), ("all records", None),
+])
+def test_relative_time_windows(question, days):
+    assert retrieval._time_window(question) == days
+
+
+def test_unsupported_relative_time_is_not_silently_all_time():
+    result = retrieval.query_fleet_data("last 12 hours")
+    assert result.status == "error"
