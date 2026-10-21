@@ -22,7 +22,7 @@ def search_documents(query: str, limit: int = 5) -> ToolResult:
 
 
 def query_knowledge_graph(question: str) -> ToolResult:
-    """Search optional stored triples; empty when graph extraction is deferred. Use fleet and documents for primary evidence."""
+    """Search extracted AGE relationships with source quotations; verify inferred relations against their sources."""
     from copilot.retrieval import query_knowledge_graph as handler
     return handler(question)
 

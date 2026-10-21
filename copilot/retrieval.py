@@ -136,18 +136,16 @@ def search_documents(query: str, limit: int = 5) -> ToolResult:
 
 
 def query_knowledge_graph(question: str) -> ToolResult:
-    """Search provenance-backed triples; no generated Cypher or graph inference."""
+    """Search model-extracted relationships backed by current quotations and AGE edges."""
     if not question.strip() or len(question) > 4000:
         return ToolResult(status="error", data=[], citations=[], error="Provide a question of 1–4000 characters.")
     try:
         with read_connection() as conn:
-            rows = conn.execute("""
-                SELECT id, subject, predicate, object, source FROM knowledge_triples
-                WHERE to_tsvector('english', subject || ' ' || predicate || ' ' || object)
-                    @@ plainto_tsquery('english', %s)
-                ORDER BY id LIMIT 30
-            """, (question,)).fetchall()
+            from copilot.graph_store import query_graph
+            rows = query_graph(conn, question)
         return ToolResult(status="ok" if rows else "empty", data=rows,
-                          citations=[_citation(row, "triple") for row in rows])
+                          citations=[{**_citation(row, "triple"), "chunk_id": row["chunk_id"],
+                                      "evidence": row["evidence"]} for row in rows],
+                          error="Relationships are model-extracted; verify their quoted source and conditions." if rows else None)
     except Exception:
         return _unavailable()

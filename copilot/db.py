@@ -26,7 +26,8 @@ def read_connection():
 
 
 def migrate(conn=None):
-    sql = (Path(__file__).resolve().parents[1] / "migrations" / "001_initial.sql").read_text()
+    sql = "\n".join(path.read_text(encoding="utf-8") for path in sorted(
+        (Path(__file__).resolve().parents[1] / "migrations").glob("*.sql")))
     if conn is not None:
         conn.execute(sql)
     else:
