@@ -86,22 +86,46 @@ def _compact(value):
     return value
 
 
+def _temperature(row, field):
+    if not isinstance(row, dict):
+        return float("-inf")
+    try:
+        return float(row.get(field))
+    except (TypeError, ValueError):
+        return float("-inf")
+
+
 def _context(results):
     envelopes = []
     for result in results:
         selected, kinds = [], set()
         # Keep one of each evidence kind before adding another row of that kind.
         ordered = []
-        for row in result["data"]:
+        rows = list(result["data"])
+        # Stable sorting preserves retrieval relevance for other evidence kinds.
+        rows.sort(key=lambda row: (
+            row.get("kind") == "source_record" and "installed_components" in str(row.get("source", "")),
+            _temperature(row.get("payload", {}), "peak_brake_temp_c") if row.get("kind") == "sensor_reading" else float("-inf"),
+        ), reverse=True)
+        # Summary scope remains first even when installed-part records rank highly.
+        rows.sort(key=lambda row: row.get("kind") != "sensor_summary")
+        for row in rows:
             kind = row.get("kind", row.get("resource", "record"))
             if kind not in kinds:
                 ordered.append(row)
                 kinds.add(kind)
-        ordered += [row for row in result["data"] if row not in ordered]
+        sensors = [row for row in rows if row.get("kind") == "sensor_reading"]
+        if sensors:
+            recent = max(sensors, key=lambda row: str(row.get("observed_at") or ""))
+            if recent not in ordered:
+                ordered.append(recent)
+        ordered += [row for row in rows if row not in ordered]
         for row in ordered[:5]:
             candidate = _compact(row)
             if candidate.get("kind") == "sensor_summary":
-                candidate["groups"] = candidate.get("groups", [])[:2]
+                groups = sorted(row.get("groups", []),
+                                key=lambda group: _temperature(group, "max_peak_brake_temp_c"), reverse=True)
+                candidate["groups"] = [_compact(group) for group in groups[:2]]
                 candidate["groups_truncated"] = len(row.get("groups", [])) > 2
             if len(json.dumps(selected + [candidate], default=str)) <= 1800:
                 selected.append(candidate)
