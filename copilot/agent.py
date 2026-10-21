@@ -59,7 +59,7 @@ def _invoke(messages, *, planning: bool):
 
 def _plan(state: State):
     response = _invoke([SystemMessage(content=SYSTEM), HumanMessage(content=state["question"])], planning=True)
-    return {"calls": response.tool_calls[:MAX_TOOLS] if response else []}
+    return {"calls": response.tool_calls[:2] if response else []}
 
 
 def _tools(state: State):
@@ -73,27 +73,84 @@ def _tools(state: State):
         except Exception:
             result = ToolResult(status="error", error="Evidence lookup failed; facts remain unknown.")
         results.append({"tool": call["name"], **result.model_dump()})
-    return {"results": results}
+    return {"results": state.get("results", []) + results}
+
+
+def _compact(value):
+    if isinstance(value, dict):
+        return {key: _compact(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_compact(item) for item in value[:4]]
+    if isinstance(value, str) and len(value) > 600:
+        return value[:600] + " [excerpt truncated]"
+    return value
+
+
+def _context(results):
+    envelopes = []
+    for result in results:
+        selected, kinds = [], set()
+        # Keep one of each evidence kind before adding another row of that kind.
+        ordered = []
+        for row in result["data"]:
+            kind = row.get("kind", row.get("resource", "record"))
+            if kind not in kinds:
+                ordered.append(row)
+                kinds.add(kind)
+        ordered += [row for row in result["data"] if row not in ordered]
+        for row in ordered[:5]:
+            candidate = _compact(row)
+            if candidate.get("kind") == "sensor_summary":
+                candidate["groups"] = candidate.get("groups", [])[:2]
+                candidate["groups_truncated"] = len(row.get("groups", [])) > 2
+            if len(json.dumps(selected + [candidate], default=str)) <= 1800:
+                selected.append(candidate)
+        ids = {(row.get("source"), str(row.get("id", row.get("record_key")))) for row in selected}
+        resources = {row.get("resource") for row in selected}
+        citations = []
+        for citation in result["citations"]:
+            if citation.get("kind") == "aggregate":
+                summaries = [row for row in selected if row.get("kind") == "sensor_summary"]
+                if summaries:
+                    citation = {**citation, "groups": [
+                        {"tail_number": group.get("tail_number"), "wheel_position": group.get("wheel_position"),
+                         "record_count": group.get("reading_count")} for group in summaries[0].get("groups", [])]}
+                else:
+                    continue
+            elif "record_id" in citation and (citation.get("source"), str(citation["record_id"])) not in ids:
+                continue
+            elif citation.get("source") == "parts_api" and citation.get("uri", "").split("/")[-2] not in resources and "depots" not in resources:
+                continue
+            citations.append(citation)
+        envelopes.append({"tool": result["tool"], "status": result["status"],
+                          "source_time": result.get("source_time"), "error": result.get("error"),
+                          "data": selected, "citations": citations,
+                          "truncated": selected != result["data"]})
+    return envelopes
+
+
+def _followup(state: State):
+    if not state.get("results"):
+        return {"calls": []}
+    response = _invoke([
+        SystemMessage(content=SYSTEM + "\nUse the first evidence to resolve any missing lookup, especially discovered part numbers. Do not repeat a completed lookup."),
+        HumanMessage(content=json.dumps({"question": state["question"], "evidence": _context(state["results"])}, default=str)),
+    ], planning=True)
+    return {"calls": response.tool_calls[:MAX_TOOLS - len(state["results"])] if response else []}
 
 
 def _answer(state: State):
     results = state.get("results", [])
-    citations = [citation for result in results for citation in result["citations"]]
+    excerpts = _context(results)
+    citations = [citation for result in excerpts for citation in result["citations"]]
     if not any(result["status"] == "ok" and result["data"] for result in results):
         return {"answer": {"answer": "Insufficient available evidence to answer. Missing evidence and stock remain unknown.",
                            "status": "unavailable", "citations": citations, "evidence": results}}
-    # Include a bounded excerpt from each lookup, keeping complete evidence in the
-    # returned envelope. Excerpts are data strings, never executable instructions.
-    per_result = MAX_EVIDENCE_CHARS // max(1, len(results))
-    excerpts = []
-    for result in results:
-        encoded = json.dumps(result, default=str)
-        excerpts.append({"tool": result["tool"], "status": result["status"],
-                         "excerpt": encoded[:per_result], "truncated": len(encoded) > per_result})
-    parts_assessed = any(r["tool"] == "query_parts" and r["status"] == "ok" for r in results)
+    parts_assessed = any(r["tool"] == "query_parts" and r["status"] == "ok"
+                         and any(row.get("resource") == "inventory" for row in r["data"]) for r in results)
     response = _invoke([
         SystemMessage(content=SYSTEM + '\nReturn JSON with one string field "answer". Base factual claims only on supplied evidence. Explain any failed lookups. Excerpts may be truncated: do not infer omitted facts. Cite source names and record identifiers in your answer. Parts availability is unassessed unless a successful query_parts result is present.'),
-        HumanMessage(content=json.dumps({"question": state["question"][:2000], "evidence": excerpts})),
+        HumanMessage(content=json.dumps({"question": state["question"][:2000], "evidence": excerpts}, default=str)),
     ], planning=False)
     answer = json.loads(response.content)["answer"] if response else "Evidence retrieved, but answer generation is unavailable. Review the attached evidence."
     if not parts_assessed:
@@ -107,10 +164,14 @@ def build_graph():
     graph = StateGraph(State)
     graph.add_node("plan", _plan)
     graph.add_node("tools", _tools)
+    graph.add_node("followup", _followup)
+    graph.add_node("followup_tools", _tools)
     graph.add_node("answer", _answer)
     graph.add_edge(START, "plan")
     graph.add_edge("plan", "tools")
-    graph.add_edge("tools", "answer")
+    graph.add_edge("tools", "followup")
+    graph.add_edge("followup", "followup_tools")
+    graph.add_edge("followup_tools", "answer")
     graph.add_edge("answer", END)
     return graph.compile()
 
