@@ -1,0 +1,66 @@
+name: maintenance-copilot-readiness
+
+services:
+  postgres:
+    build:
+      context: ./infra/postgres
+    image: maintenance-copilot-postgres:pg18.6-age1.8.0-vector0.8.6
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      POSTGRES_DB: agent
+      PGDATA: /var/lib/postgresql/18/docker
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent && psql -U agent -d agent -Atc \"SELECT count(*) = 2 FROM pg_extension WHERE extname IN ('age', 'vector')\" | grep -qx t"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  phoenix:
+    image: arizephoenix/phoenix:version-20.23.0@sha256:c542e7de1dc1fdd0f938de337d44ebefa7266e91391eed6e7978523d7f6e1f2f
+    environment:
+      PHOENIX_WORKING_DIR: /phoenix-data
+    ports:
+      - "127.0.0.1:6006:6006"
+    volumes:
+      - phoenixdata:/phoenix-data
+    healthcheck:
+      test: ["CMD", "/usr/bin/python3", "-c", "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:6006/healthz', timeout=3).status == 200"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  parts-api:
+    image: python:3.12.13-slim-trixie@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+    command: ["python", "/kit/services/parts_api.py"]
+    environment:
+      PARTS_DB: /kit/data/parts/parts.db
+      PARTS_API_PORT: "8085"
+      FAULT_MODE: none
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:8085:8085"
+    volumes:
+      - type: bind
+        source: ${KIT_DIR:-./rtx-ai-session-kit}
+        target: /kit
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8085/health', timeout=3))['status'] == 'ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  pgdata:
+  phoenixdata:
