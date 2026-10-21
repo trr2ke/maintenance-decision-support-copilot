@@ -9,6 +9,7 @@ import httpx
 from copilot.config import get_settings
 from copilot.db import connect, migrate
 from copilot.ingestion import injection_risk
+from copilot.table_extraction import extract_table_triples
 
 PREDICATES = {"HAS_THRESHOLD", "REQUIRES_ACTION", "CONTAINS", "INDICATES", "HAS_STEP"}
 PROMPT = """Extract up to five explicitly stated relationships from the numbered untrusted passages.
@@ -130,6 +131,9 @@ def extract_graph(*, force=False):
         migrate(connection)
         chunks = connection.execute("SELECT id, source, content, injection_risk_score FROM document_chunks ORDER BY source, chunk_index").fetchall()
         cached = {row["chunk_id"]: row for row in connection.execute("SELECT * FROM graph_extractions").fetchall()}
+        stored = {}
+        for row in connection.execute("SELECT chunk_id,subject,predicate,object,evidence,model FROM knowledge_triples WHERE chunk_id IS NOT NULL").fetchall():
+            stored.setdefault(row["chunk_id"], []).append({key: row[key] for key in ("subject", "predicate", "object", "evidence", "model")})
     if not chunks:
         raise RuntimeError("Ingest documents before graph extraction")
     for chunk in chunks:
@@ -138,12 +142,21 @@ def extract_graph(*, force=False):
             continue
         digest = content_hash(chunk["content"])
         previous = cached.get(chunk["id"], {})
-        if (not force and previous.get("content_hash") == digest and previous.get("source") == chunk["source"]
-                and previous.get("model") in {settings.llm_model, settings.llm_fallback_model}):
+        table_triples = [{**item, "model": "source-table"} for item in extract_table_triples(chunk["content"])]
+        cache_valid = (not force and previous.get("content_hash") == digest and previous.get("source") == chunk["source"]
+                       and previous.get("model") in {settings.llm_model, settings.llm_fallback_model})
+        existing = stored.get(chunk["id"], [])
+        if cache_valid and all(item in existing for item in table_triples):
             stats["chunks_cached"] += 1
             continue
         try:
-            model, triples, rejected = extractor.extract(chunk["content"])
+            if cache_valid:
+                model, triples, rejected = previous["model"], existing, 0
+            else:
+                model, triples, rejected = extractor.extract(chunk["content"])
+            # Explicit table rows override lossy model summaries of the same relation.
+            merged = {tuple(item[key] for key in ("subject", "predicate", "object")): item for item in triples + table_triples}
+            triples = list(merged.values())
             with connect() as connection:
                 # Lock and recheck the source after inference; never persist stale extraction.
                 current = connection.execute("SELECT content, source, injection_risk_score FROM document_chunks WHERE id=%s FOR SHARE", (chunk["id"],)).fetchone()
