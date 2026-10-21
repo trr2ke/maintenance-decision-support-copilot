@@ -115,9 +115,43 @@ def test_context_prioritizes_hottest_groups_and_installed_parts():
              {"kind": "sensor_reading", "id": "cool", "observed_at": "2026-01-03", "payload": {"peak_brake_temp_c": 50}},
              {"kind": "sensor_reading", "id": "hot", "observed_at": "2026-01-01", "payload": {"peak_brake_temp_c": 900}}]
     result = agent._context([{"tool": "query_fleet_data", "status": "ok", "data": rows, "citations": []}])[0]
-    summary = result["data"][0]
+    summary = next(row for row in result["data"] if row.get("kind") == "sensor_summary")
     assert [group["max_peak_brake_temp_c"] for group in summary["groups"]] == [900, 800]
     assert summary["groups_truncated"]
     assert next(row for row in result["data"] if row.get("kind") == "source_record")["record_key"] == "I1"
     assert next(row for row in result["data"] if row.get("kind") == "sensor_reading")["id"] == "hot"
     assert any(row.get("id") == "cool" for row in result["data"])
+
+
+def test_maintenance_route_gets_fleet_documents_and_discovered_stock(monkeypatch):
+    called = []
+
+    def query_fleet_data(question: str) -> ToolResult:
+        """Read synthetic fleet."""
+        called.append("fleet")
+        return ToolResult(status="ok", data=[{"kind": "source_record", "source": "parts/installed_components",
+            "record_key": "I1", "payload": {"tail_number": "T1", "part_number": "KNOWN-PART"}}],
+            citations=[{"source": "parts/installed_components", "record_id": "I1"}])
+
+    def search_documents(query: str, limit: int = 3) -> ToolResult:
+        """Read synthetic manual."""
+        called.append("documents")
+        return ToolResult(status="ok", data=[{"content": "Inspect brakes."}], citations=[{"source": "fixture-manual"}])
+
+    def query_parts(part_number: str) -> ToolResult:
+        """Read synthetic stock."""
+        assert part_number == "KNOWN-PART"
+        called.append("parts")
+        return ToolResult(status="ok", data=[{"resource": "inventory", "records": [{"on_hand": 1}]}])
+
+    def invoke(messages, *, planning):
+        if planning:
+            return AIMessage(content="", tool_calls=[{"name": "query_knowledge_graph", "args": {"question": "brakes"}, "id": "bad-route"}])
+        return AIMessage(content='{"answer":"Inspect according to the cited manual; observed stock is 1."}')
+
+    monkeypatch.setattr(agent, "HANDLERS", {fn.__name__: fn for fn in [query_fleet_data, search_documents, query_parts]})
+    monkeypatch.setattr(agent, "_invoke", invoke)
+    result = agent.run_query("Check brake temperatures, maintenance procedure and replacement stock for tail T1")
+    assert called == ["fleet", "documents", "parts"]
+    assert len(result["evidence"]) <= agent.MAX_TOOLS
+    assert result["status"] == "ok"
