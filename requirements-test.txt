@@ -1,4 +1,5 @@
 pytest==9.1.1
+pyvis==0.3.2
 pydantic==2.14.1
 python-dotenv==1.2.4
 psycopg[binary]==3.3.6
