@@ -1,0 +1,6 @@
+# Ollama 0.40.7 verified locally. /v1 context comes from this model alias.
+# Create: ollama create maintenance-gemma4:12b -f scripts/models/gemma4.Modelfile
+# ChatOpenAI must also send reasoning_effort="none" to disable thinking.
+FROM gemma4:12b
+PARAMETER num_ctx 4096
+PARAMETER temperature 0.1
