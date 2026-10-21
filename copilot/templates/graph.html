@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'">
+<title>Maintenance knowledge graph</title>
+<style>{% include 'lib/vis-9.1.2/vis-network.css' %}</style>
+<style>
+*{box-sizing:border-box}body{margin:0;height:100vh;display:flex;flex-direction:column;background:#0b1220;color:#e2e8f0;font:14px system-ui,sans-serif}
+header{flex-shrink:0;padding:22px 28px;border-bottom:1px solid #26364e;background:#101c2d}h1{font-size:24px;margin:0 0 7px}
+.muted{color:#9eb1cc}.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;align-items:center}
+input,select,button{font:inherit;background:#17263c;color:#e2e8f0;border:1px solid #405675;border-radius:7px;padding:9px 12px}
+input{width:270px}button{cursor:pointer}button:hover{border-color:#67e8f9}main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:minmax(0,1fr);min-height:0}
+#network{height:100%;width:100%;min-height:0;min-width:0;overflow:hidden}#network canvas{display:block}aside{border-left:1px solid #26364e;padding:22px;background:#101c2d;overflow:auto}
+h2{font-size:16px;margin-top:0}h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#9eb1cc;margin:24px 0 8px}
+#quote{white-space:pre-wrap;line-height:1.7;border-left:3px solid #38bdf8;padding-left:12px}#source,#relation,#model{overflow-wrap:anywhere;line-height:1.6}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;margin-top:13px}.legend span:before{content:'●';color:var(--color);margin-right:5px}
+@media(max-width:850px){body{height:auto}main{grid-template-columns:1fr;grid-template-rows:auto auto}#network{height:65vh}aside{border-left:0;border-top:1px solid #26364e}}
+</style>
+<script>{% include 'lib/vis-9.1.2/vis-network.min.js' %}</script>
+</head>
+<body>
+<header><h1>Maintenance knowledge graph</h1><div class="muted" id="counts"></div>
+<div class="toolbar"><input id="search" aria-label="Find an entity" placeholder="Find an entity…"><button id="find">Find</button>
+<select id="predicate" aria-label="Relationship type"><option value="">All relationships</option></select><button id="fit">Fit graph</button><span class="muted">Drag · zoom · select a relationship</span></div>
+<div class="legend"><span style="--color:#fbbf24">Threshold</span><span style="--color:#fb7185">Action</span><span style="--color:#38bdf8">Component</span><span style="--color:#c084fc">Indication</span><span style="--color:#34d399">Step</span></div>
+</header>
+<main><div id="network" aria-label="Interactive directed knowledge graph"></div><aside>
+<h2>Source evidence</h2><p id="relation" class="muted">Select an arrow to inspect its relationship and original quotation.</p>
+<h3>Quotation</h3><div id="quote">—</div><h3>Source</h3><div id="source">—</div><h3>Extraction model</h3><div id="model">—</div>
+<p class="muted">Relationships are model-extracted. Check the quotation and its conditions before relying on a relationship. This page works offline.</p>
+</aside></main>
+<script>
+const nodes = new vis.DataSet({{ nodes|tojson }});
+const edges = new vis.DataSet({{ edges|tojson }});
+const network = new vis.Network(document.getElementById('network'), {nodes,edges}, {{ options|safe }});
+const counts = document.getElementById('counts');
+counts.textContent = `${nodes.length} entities · ${edges.length} relationships · local snapshot`;
+network.once('stabilizationIterationsDone',()=>{network.setOptions({physics:false});network.fit();});
+const selector=document.getElementById('predicate');
+[...new Set(edges.get().map(edge=>edge.predicate))].sort().forEach(value=>{
+  const option=document.createElement('option');option.value=value;option.textContent=value.replaceAll('_',' ').toLowerCase();selector.appendChild(option);
+});
+selector.addEventListener('change',()=>{
+  const visible=new Set();edges.get().forEach(edge=>{const show=!selector.value||edge.predicate===selector.value;
+    edges.update({id:edge.id,hidden:!show});if(show){visible.add(edge.from);visible.add(edge.to);}});
+  nodes.getIds().forEach(id=>nodes.update({id,hidden:!visible.has(id)}));network.unselectAll();network.fit();
+});
+function find(){const term=document.getElementById('search').value.trim().toLowerCase();
+  const ids=term?nodes.get().filter(node=>!node.hidden&&node.name.toLowerCase().includes(term)).map(node=>node.id):[];
+  network.selectNodes(ids);if(ids.length)network.fit({nodes:ids,animation:true});}
+document.getElementById('find').onclick=find;
+document.getElementById('search').addEventListener('keydown',event=>{if(event.key==='Enter')find();});
+document.getElementById('fit').onclick=()=>network.fit({animation:true});
+network.on('click',params=>{
+  if(!params.edges.length)return;const edge=edges.get(params.edges[0]);
+  document.getElementById('relation').textContent=`${edge.subject} → ${edge.predicate.replaceAll('_',' ').toLowerCase()} → ${edge.object}`;
+  document.getElementById('quote').textContent=edge.evidence;
+  document.getElementById('source').textContent=`${edge.document_source}\nChunk ${edge.chunk_id}`;
+  document.getElementById('model').textContent=edge.model;
+});
+</script>
+</body></html>

@@ -11,6 +11,8 @@ def main(argv=None):
     commands.add_parser("ingest", help="Load the configured local kit idempotently")
     extraction = commands.add_parser("extract", help="Extract cited relationships with local models into Apache AGE")
     extraction.add_argument("--force", action="store_true", help="Re-extract unchanged document chunks")
+    visualization = commands.add_parser("visualize", help="Export an offline interactive PyVis graph")
+    visualization.add_argument("--output", default="artifacts/maintenance-graph.html")
     ask = commands.add_parser("ask", help="Ask a question using local evidence")
     ask.add_argument("question")
     commands.add_parser("mcp", help="Serve shared tools over MCP stdio")
@@ -28,6 +30,9 @@ def main(argv=None):
             result = extract_graph(force=args.force)
             print(json.dumps(result))
             return 0 if result["status"] == "ok" else 1
+        elif args.command == "visualize":
+            from copilot.visualization import visualize
+            print(json.dumps(visualize(args.output)))
         elif args.command == "mcp":
             from copilot.mcp_server import main as serve
             serve()

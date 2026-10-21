@@ -13,6 +13,7 @@ With the configured Python environment, run:
 python -m copilot migrate
 python -m copilot ingest
 python -m copilot extract
+python -m copilot visualize
 python -m copilot ask "Summarize recent brake temperatures and relevant procedures for tail 412."
 python -m copilot mcp
 ```
@@ -24,6 +25,8 @@ operation status traces without prompts or source text. `extract` uses the local
 models to populate Apache AGE with quoted, source-linked relationships. Unchanged
 chunks are cached; `extract --force` refreshes them. Model-extracted relations
 require verification against their quotations. The web UI remains deferred.
+`visualize` writes an interactive, offline graph to ignored
+`artifacts/maintenance-graph.html`; select a relationship to inspect its quotation.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/startup.ps1
