@@ -155,3 +155,17 @@ def test_maintenance_route_gets_fleet_documents_and_discovered_stock(monkeypatch
     assert called == ["fleet", "documents", "parts"]
     assert len(result["evidence"]) <= agent.MAX_TOOLS
     assert result["status"] == "ok"
+
+
+def test_global_context_budget_preserves_status_time_and_valid_citations():
+    results = []
+    for tool in range(4):
+        source = "fixture-" + str(tool)
+        results.append({"tool": f"lookup{tool}", "status": "ok", "source_time": "2026-01-01",
+            "data": [{"id": i, "source": source, "content": "x" * 600} for i in range(5)],
+            "citations": [{"source": source, "record_id": i, "description": "y" * 400} for i in range(5)]})
+    context = agent._context(results)
+    assert len(json.dumps(context)) <= agent.MAX_EVIDENCE_CHARS
+    assert all(item["status"] == "ok" and item["source_time"] == "2026-01-01" for item in context)
+    for item in context:
+        assert all(citation["record_id"] in {row["id"] for row in item["data"]} for citation in item["citations"])
