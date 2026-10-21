@@ -17,7 +17,7 @@ Use root `compose.yaml`, `infra/`, startup wrappers and `scripts/preflight.py`. 
 Checked items were validated on 2026-10-21; they certify prerequisites, not application behavior. Record dated, sanitized results in the readiness PR; consult `docs/model-readiness.md` for measured model outcomes. Re-run runtime gates before the session.
 
 - [x] A sanitized Git baseline exists remotely. Readiness uses `chore/execution-readiness`.
-- [ ] Branch/PR creation and authentication work; kit, credentials, environments and generated artifacts are excluded.
+- [x] Branch/PR creation and authentication work; kit, credentials, environments and generated artifacts are excluded. [Readiness PR #1](https://github.com/trr2ke/maintenance-decision-support-copilot/pull/1) is open for review.
 - [x] Declared dependencies import and `pip check` passes in the chosen interpreter.
 - [x] Compose validates and all services become healthy. Startup resolves repository-relative paths, checks native exit codes and fails clearly. Alternate interpreter paths use `-PythonExe`/`PYTHON_EXE`.
 - [x] Pinned PostgreSQL contains AGE and pgvector; actual graph/vector queries work. Cluster identity and extension OIDs survive container recreation without volume deletion, with PGDATA inside the persistent mount.

@@ -20,6 +20,7 @@ The final PowerShell startup check, using `-NoStart`, exited zero and reported
 | Fallback model | `maintenance-llama32:3b`; exact tool arguments and structured final result passed in 3.30 seconds |
 | Supplied smoke | Passed using root environment overrides; detailed output remains in ignored `.local/` |
 | Readiness unit tests | 21 passed, zero skipped; independent fixtures only |
+| GitHub CI | Readiness tooling workflow passed on PR #1; no supplied material used |
 | Shell/configuration | PowerShell parsed, Bash syntax checked, Compose validated, staged whitespace checked |
 
 Model timing above is from the final preflight, not a performance guarantee.
@@ -32,6 +33,10 @@ The supplied source tree and `.env` are ignored and absent from tracked paths.
 The initial public Git baseline contains only independently authored project
 instructions and exclusions. The readiness PR adds independently authored setup
 code, tests and planning documents; hosted CI never receives the kit.
+
+[Readiness PR #1](https://github.com/trr2ke/maintenance-decision-support-copilot/pull/1)
+is open for review. An independent agent review found no remaining prerequisite
+blocker after the final checks.
 
 Before application execution: review/merge the readiness PR, explicitly authorize
 implementation, assign workers to worktrees and freeze contracts. Confirm the
