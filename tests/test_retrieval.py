@@ -1,0 +1,74 @@
+from contextlib import contextmanager
+from datetime import datetime, timezone
+
+import pytest
+
+from copilot import retrieval
+
+
+@pytest.mark.parametrize("tool,args", [
+    (retrieval.query_fleet_data, ("",)),
+    (retrieval.query_fleet_data, ("fleet", "")),
+    (retrieval.search_documents, ("brakes", 0)),
+    (retrieval.search_documents, ("brakes", 11)),
+    (retrieval.query_knowledge_graph, ("",)),
+])
+def test_invalid_requests_are_rejected(tool, args):
+    assert tool(*args).status == "error"
+
+
+def test_database_failure_does_not_claim_empty_evidence(monkeypatch):
+    def fail():
+        raise ConnectionError("private connection credentials")
+    monkeypatch.setattr(retrieval, "read_connection", fail)
+    result = retrieval.query_fleet_data("latest readings")
+    assert result.status == "unavailable"
+    assert "private" not in result.model_dump_json()
+
+
+def test_fleet_anchor_provenance_and_parameter_binding(monkeypatch):
+    anchor = datetime(2025, 1, 10, tzinfo=timezone.utc)
+    answers = iter([
+        {"anchor": anchor}, [],
+        [{"id": "independent-1", "source": "fixture.csv", "payload": {"temperature": 10}}],
+        [], [],
+    ])
+    calls = []
+    class Connection:
+        def execute(self, sql, params=None):
+            calls.append((sql, params))
+            self.answer = next(answers)
+            return self
+        def fetchone(self):
+            return self.answer
+        def fetchall(self):
+            return self.answer
+    @contextmanager
+    def connection():
+        yield Connection()
+    monkeypatch.setattr(retrieval, "read_connection", connection)
+    malicious_tail = "'; DROP TABLE sensor_readings; --"
+    result = retrieval.query_fleet_data("last 7 days", malicious_tail)
+    assert result.status == "ok"
+    assert result.source_time == anchor.isoformat()
+    assert result.citations[0]["record_id"] == "independent-1"
+    assert all(malicious_tail not in sql for sql, _ in calls)
+    assert calls[1][1][2] == 7
+
+
+def test_lexical_fallback_is_disclosed_and_cited(monkeypatch):
+    monkeypatch.setattr(retrieval, "_embedding_model", lambda: (_ for _ in ()).throw(OSError()))
+    class Connection:
+        def execute(self, sql, params):
+            assert params[1] is None
+            return self
+        def fetchall(self):
+            return [{"id": "chunk-1", "source": "fixture.md", "chunk_index": 0, "content": "Inspect brakes."}]
+    @contextmanager
+    def connection():
+        yield Connection()
+    monkeypatch.setattr(retrieval, "read_connection", connection)
+    result = retrieval.search_documents("brakes")
+    assert result.status == "ok"
+    assert "lexical" in result.error
+    assert result.citations[0]["source"] == "fixture.md"
