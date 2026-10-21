@@ -4,7 +4,7 @@ from datetime import timezone
 
 import pytest
 
-from copilot.ingestion import chunks, injection_risk, maintenance_rows, sensor_rows, sqlite_records, timestamp
+from copilot.ingestion import chunks, injection_risk, maintenance_rows, sensor_rows, sqlite_records, timestamp, text_identifier
 
 
 def test_sensor_preserves_identifiers_and_precision(tmp_path):
@@ -62,3 +62,11 @@ def test_chunk_overlap_retains_boundary_evidence_and_flags_untrusted_text():
 def test_invalid_dates_fail_instead_of_fabricating_time():
     with pytest.raises(ValueError):
         timestamp("yesterday")
+
+
+def test_identifiers_normalize_whitespace_without_rounding():
+    assert text_identifier(" 00015 ") == "00015"
+    assert text_identifier(15) == "15"
+    for value in (1.5, "1.5", True, None, " "):
+        with pytest.raises(ValueError):
+            text_identifier(value)
