@@ -1,11 +1,26 @@
 # Maintenance Decision-Support Copilot
 
-Local readiness setup; application development is on hold. See
+Local maintenance evidence assistant with a CLI and shared LangGraph/MCP tools. See
 [EXECUTION_PLAN.md](EXECUTION_PLAN.md) for the build and PR sequence.
 Keep the supplied kit in ignored `rtx-ai-session-kit/`, or set `KIT_DIR` in `.env`.
 Kit contents, credentials and derived data must stay out of Git and hosted CI.
 
 ## Run on this workstation
+
+With the configured Python environment, run:
+
+```powershell
+python -m copilot migrate
+python -m copilot ingest
+python -m copilot ask "Summarize recent brake temperatures and relevant procedures for tail 412."
+python -m copilot mcp
+```
+
+Use `KIT_DIR` in `.env` when running from a separate worktree. Ingestion is
+transactional and repeatable. Answers include local evidence and citations;
+missing evidence or failed services remain explicitly unknown. Phoenix receives
+operation status traces without prompts or source text. Graph extraction and a
+web UI are deferred; graph lookup returns only explicitly stored triples.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/startup.ps1
